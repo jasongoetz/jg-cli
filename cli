@@ -1,0 +1,65 @@
+#! /bin/bash
+LAST_BUILD_SHA_FILE=./.buildsha
+
+
+if [ "$(uname -s)" = "Darwin" ]; then
+    function readlink() {
+        greadlink "$@"
+    }
+fi
+
+export AWS_SDK_LOAD_CONFIG=1
+
+export CLI_DIR="${CLI_DIR:-$(readlink -f "$(dirname "$0")/..")}"
+
+if [ -z "$CLI_DIR" ]; then
+    echo ""
+    echo "CLI_DIR is a required environment variable. We tried to figure it out but it was unsuccessful."
+fi
+
+cliDir="$CLI_DIR"
+
+if [ ! -d "$cliDir" ]; then
+    echo "Couldn't find $cliDir. Is your CLI_DIR set correctly? No trailing slash or typos?"
+    echo "CLI_DIR=$CLI_DIR"
+    exit 1
+fi
+
+cd "$cliDir"
+echo "CLI_DIR: $cliDir"
+
+if [ ! -d "./node_modules" ]; then
+    echo "./node_modules missing. Running yarn.." >&2
+    yarn install >&2
+fi
+
+lastBuildSha="$(cat $LAST_BUILD_SHA_FILE 2>/dev/null)"
+lastShaCliChanged=$(git log --no-color -n1 --oneline . | awk '{print $1;}')
+
+recompileCli() {
+    yarn build >&2
+    echo $lastShaCliChanged > $LAST_BUILD_SHA_FILE
+}
+
+runCli() {
+  node -r dotenv/config "$cliDir/lib/cli.js" "$@"
+}
+
+if [[ -z "$lastBuildSha" ]]; then
+    echo "Cli has never built locally, building now.." >&2
+    recompileCli
+elif [[ $(git ls-files -dm) ]]; then
+    echo "Cli has local changed files, recompiling.." >&2
+    recompileCli
+elif ! git merge-base --is-ancestor $lastShaCliChanged $lastBuildSha; then
+    echo "Cli has changed since last local build, recompiling.." >&2
+    recompileCli
+fi
+
+if [[ "$1" = "dc" ]]; then
+  shift
+  dcShortcuts "$@"
+else
+  runCli "$@"
+fi
+
