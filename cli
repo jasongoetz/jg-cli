@@ -26,7 +26,6 @@ if [ ! -d "$cliDir" ]; then
 fi
 
 cd "$cliDir"
-echo "CLI_DIR: $cliDir"
 
 if [ ! -d "./node_modules" ]; then
     echo "./node_modules missing. Running yarn.." >&2
